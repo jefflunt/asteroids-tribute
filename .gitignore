@@ -13,10 +13,13 @@ node_modules/
 # Production/Build outputs (Vite/TypeScript)
 dist/
 dist-ssr/
+build/
+out/
 *.local
 
 # Logs and diagnostic files
 *.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -28,6 +31,9 @@ lerna-debug.log*
 tsconfig.tsbuildinfo
 .vite/
 .vitest-cache/
+temp/
+tmp/
+.cache/
 
 # Coverage reports
 coverage/
@@ -36,6 +42,11 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE and Editors
 .vscode/

@@ -73,7 +73,7 @@ export class Game {
       const key = e.key.toLowerCase();
       
       // Prevent scrolling behaviors for game controls
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 's', 'w', 'a', 'd', 'm', 'M'].includes(e.key) || e.key === 'Enter') {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 's', 'w', 'a', 'd', 'm', 'M'].includes(e.key.toLowerCase()) || e.key === 'Enter') {
         e.preventDefault();
       }
 
@@ -93,7 +93,10 @@ export class Game {
         if (key === ' ' && !this.keysPressed[' ']) {
           this.fireBullet();
         }
-        if (key === 's' && !this.keysPressed['s']) {
+        
+        const isHyperspaceKey = key === 's' || key === 'arrowdown';
+        const wasHyperspacePressed = this.keysPressed['s'] || this.keysPressed['arrowdown'];
+        if (isHyperspaceKey && !wasHyperspacePressed) {
           this.ship.hyperspace(this.width, this.height);
           this.soundManager.playHyperspace();
         }
@@ -133,14 +136,16 @@ export class Game {
     }
 
     // Handle ship continuous inputs
-    this.ship.thrusting = !!this.keysPressed['w'];
-    const isThrusting = !!this.keysPressed['w'];
-    this.soundManager.setThrust(isThrusting);
+    const thrustInput = !!this.keysPressed['w'] || !!this.keysPressed['arrowup'];
+    this.ship.thrusting = thrustInput;
+    this.soundManager.setThrust(thrustInput);
 
-    if (this.keysPressed['a']) {
+    const leftInput = !!this.keysPressed['a'] || !!this.keysPressed['arrowleft'];
+    const rightInput = !!this.keysPressed['d'] || !!this.keysPressed['arrowright'];
+
+    if (leftInput && !rightInput) {
       this.ship.rotate('left', deltaTime);
-    }
-    if (this.keysPressed['d']) {
+    } else if (rightInput && !leftInput) {
       this.ship.rotate('right', deltaTime);
     }
 
@@ -259,8 +264,8 @@ export class Game {
     // Controls description
     ctx.font = "14px 'Courier New', Courier, monospace";
     ctx.fillText('CONTROLS:', this.width / 2, this.height / 2 + 100);
-    ctx.fillText('W = ACCELERATE | A/D = ROTATE', this.width / 2, this.height / 2 + 130);
-    ctx.fillText('SPACE = SHOOT | S = HYPERSPACE JUMP', this.width / 2, this.height / 2 + 150);
+    ctx.fillText('WASD OR ARROW KEYS TO MOVE', this.width / 2, this.height / 2 + 130);
+    ctx.fillText('SPACE = SHOOT | S/DOWN = HYPERSPACE', this.width / 2, this.height / 2 + 150);
     ctx.fillText(`M = TOGGLE MUTE [${this.soundManager.isMuted ? 'MUTED' : 'ON'}]`, this.width / 2, this.height / 2 + 175);
 
     // Goal

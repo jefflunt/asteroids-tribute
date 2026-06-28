@@ -220,4 +220,169 @@ describe('Game State and Loop Manager', () => {
     (globalThis as any).window = originalWindow;
     (globalThis as any).localStorage = originalLocalStorage;
   });
+
+  test('should render updated Option C control instruction strings on title screen', () => {
+    const game = new Game(800, 600);
+    const mockCtx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillText: vi.fn(),
+      strokeText: vi.fn(),
+      fillRect: vi.fn(),
+      clearRect: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+
+    game.drawMenu(mockCtx);
+
+    expect(mockCtx.fillText).toHaveBeenCalledWith('WASD OR ARROW KEYS TO MOVE', expect.any(Number), expect.any(Number));
+    expect(mockCtx.fillText).toHaveBeenCalledWith('SPACE = SHOOT | S/DOWN = HYPERSPACE', expect.any(Number), expect.any(Number));
+  });
+
+  test('should handle continuous inputs from arrow keys', () => {
+    const game = new Game(800, 600);
+    game.startNewGame();
+
+    const setThrustSpy = vi.spyOn(game.soundManager, 'setThrust');
+    const rotateSpy = vi.spyOn(game.ship, 'rotate');
+
+    // 1. Thrust with ArrowUp
+    game.keysPressed['arrowup'] = true;
+    game.update(0.1);
+    expect(game.ship.thrusting).toBe(true);
+    expect(setThrustSpy).toHaveBeenLastCalledWith(true);
+
+    // 2. Clear thrust
+    game.keysPressed['arrowup'] = false;
+    game.update(0.1);
+    expect(game.ship.thrusting).toBe(false);
+    expect(setThrustSpy).toHaveBeenLastCalledWith(false);
+
+    // 3. Rotate left with ArrowLeft
+    game.keysPressed['arrowleft'] = true;
+    game.update(0.1);
+    expect(rotateSpy).toHaveBeenCalledWith('left', 0.1);
+
+    // 4. Rotate right with ArrowRight
+    rotateSpy.mockClear();
+    game.keysPressed['arrowleft'] = false;
+    game.keysPressed['arrowright'] = true;
+    game.update(0.1);
+    expect(rotateSpy).toHaveBeenCalledWith('right', 0.1);
+  });
+
+  test('should safeguard against acceleration doubling and opposing steering inputs', () => {
+    const game = new Game(800, 600);
+    game.startNewGame();
+
+    // 1. Double thrust check
+    game.keysPressed['w'] = true;
+    game.keysPressed['arrowup'] = true;
+    game.update(0.1);
+    expect(game.ship.thrusting).toBe(true); // Should still be binary (true/false)
+
+    // 2. Steer cancellation: left ('a') + right ('arrowright')
+    const rotateSpy = vi.spyOn(game.ship, 'rotate');
+    game.keysPressed['a'] = true;
+    game.keysPressed['arrowright'] = true;
+    game.update(0.1);
+    expect(rotateSpy).not.toHaveBeenCalled();
+
+    // 3. Steer cancellation: left ('arrowleft') + right ('d')
+    rotateSpy.mockClear();
+    game.keysPressed['a'] = false;
+    game.keysPressed['arrowright'] = false;
+    game.keysPressed['arrowleft'] = true;
+    game.keysPressed['d'] = true;
+    game.update(0.1);
+    expect(rotateSpy).not.toHaveBeenCalled();
+
+    // 4. Steer cancellation: left ('arrowleft') + right ('arrowright')
+    rotateSpy.mockClear();
+    game.keysPressed['d'] = false;
+    game.keysPressed['arrowleft'] = true;
+    game.keysPressed['arrowright'] = true;
+    game.update(0.1);
+    expect(rotateSpy).not.toHaveBeenCalled();
+
+    // 5. Steer cancellation: left ('a') + right ('d')
+    rotateSpy.mockClear();
+    game.keysPressed['arrowleft'] = false;
+    game.keysPressed['arrowright'] = false;
+    game.keysPressed['a'] = true;
+    game.keysPressed['d'] = true;
+    game.update(0.1);
+    expect(rotateSpy).not.toHaveBeenCalled();
+  });
+
+  test('should handle browser default prevention and single-trigger inputs', () => {
+    let keydownCallback: ((e: any) => void) | null = null;
+    let keyupCallback: ((e: any) => void) | null = null;
+    const originalWindow = (globalThis as any).window;
+    
+    const mockWindow = {
+      addEventListener: vi.fn().mockImplementation((event, callback) => {
+        if (event === 'keydown') {
+          keydownCallback = callback;
+        } else if (event === 'keyup') {
+          keyupCallback = callback;
+        }
+      })
+    };
+    (globalThis as any).window = mockWindow;
+
+    const game = new Game(800, 600);
+    game.setupInput();
+
+    expect(keydownCallback).toBeDefined();
+    expect(keyupCallback).toBeDefined();
+
+    // 1. Prevent default behavior for arrow keys
+    const preventDefaultSpy = vi.fn();
+    keydownCallback!({ key: 'ArrowUp', preventDefault: preventDefaultSpy });
+    expect(preventDefaultSpy).toHaveBeenCalled();
+
+    preventDefaultSpy.mockClear();
+    keydownCallback!({ key: 'ArrowDown', preventDefault: preventDefaultSpy });
+    expect(preventDefaultSpy).toHaveBeenCalled();
+
+    preventDefaultSpy.mockClear();
+    keydownCallback!({ key: 'ArrowLeft', preventDefault: preventDefaultSpy });
+    expect(preventDefaultSpy).toHaveBeenCalled();
+
+    preventDefaultSpy.mockClear();
+    keydownCallback!({ key: 'ArrowRight', preventDefault: preventDefaultSpy });
+    expect(preventDefaultSpy).toHaveBeenCalled();
+
+    // 2. Single trigger hyperspace check for ArrowDown
+    game.state = 'PLAYING';
+    game.keysPressed = {};
+    const hyperspaceSpy = vi.spyOn(game.ship, 'hyperspace');
+    const playHyperspaceSpy = vi.spyOn(game.soundManager, 'playHyperspace');
+
+    // Simulate keydown arrowdown
+    keydownCallback!({ key: 'ArrowDown', preventDefault: vi.fn() });
+    expect(hyperspaceSpy).toHaveBeenCalledTimes(1);
+    expect(playHyperspaceSpy).toHaveBeenCalledTimes(1);
+
+    // Simulate held key (multiple keydowns without keyup)
+    hyperspaceSpy.mockClear();
+    playHyperspaceSpy.mockClear();
+    keydownCallback!({ key: 'ArrowDown', preventDefault: vi.fn() });
+    expect(hyperspaceSpy).not.toHaveBeenCalled();
+    expect(playHyperspaceSpy).not.toHaveBeenCalled();
+
+    // Simulate pressing S while Down Arrow is still held
+    keydownCallback!({ key: 's', preventDefault: vi.fn() });
+    expect(hyperspaceSpy).not.toHaveBeenCalled();
+    expect(playHyperspaceSpy).not.toHaveBeenCalled();
+
+    // Simulate keyup ArrowDown and keyup S, then press S
+    keyupCallback!({ key: 'ArrowDown' });
+    keyupCallback!({ key: 's' });
+    keydownCallback!({ key: 's', preventDefault: vi.fn() });
+    expect(hyperspaceSpy).toHaveBeenCalledTimes(1);
+
+    // Clean up
+    (globalThis as any).window = originalWindow;
+  });
 });
