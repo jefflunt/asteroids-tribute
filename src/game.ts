@@ -2,6 +2,7 @@ import { Ship } from './entities/ship';
 import { Bullet } from './entities/bullet';
 import { Asteroid, spawnAsteroidWave } from './entities/asteroid';
 import { checkCircleCollision } from './utils/collision';
+import { SoundManager } from './utils/audio';
 
 export type GameState = 'MENU' | 'PLAYING';
 
@@ -12,6 +13,7 @@ export class Game {
   ship!: Ship;
   bullets: Bullet[];
   asteroids: Asteroid[];
+  soundManager: SoundManager;
   
   width: number;
   height: number;
@@ -22,6 +24,7 @@ export class Game {
   waveTransitionActive: boolean;
 
   constructor(width: number, height: number) {
+    this.soundManager = new SoundManager();
     this.width = width;
     this.height = height;
     this.state = 'MENU';
@@ -51,6 +54,8 @@ export class Game {
     this.resetEntities();
     this.ship.triggerInvulnerability(3.0); // 3 seconds safe window
     this.spawnCurrentWave();
+    this.soundManager.startHeartbeat();
+    this.soundManager.updateHeartbeatAsteroidsCount(this.asteroids.length);
   }
 
   spawnCurrentWave(): void {
@@ -64,11 +69,18 @@ export class Game {
   setupInput(): void {
     if (typeof window === 'undefined') return;
     window.addEventListener('keydown', (e) => {
+      this.soundManager.init();
       const key = e.key.toLowerCase();
       
       // Prevent scrolling behaviors for game controls
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 's', 'w', 'a', 'd'].includes(e.key) || e.key === 'Enter') {
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 's', 'w', 'a', 'd', 'm', 'M'].includes(e.key) || e.key === 'Enter') {
         e.preventDefault();
+      }
+
+      if (key === 'm') {
+        const nextMuteState = !this.soundManager.isMuted;
+        this.soundManager.setMute(nextMuteState);
+        return;
       }
 
       if (this.state === 'MENU' && e.key === 'Enter') {
@@ -83,6 +95,7 @@ export class Game {
         }
         if (key === 's' && !this.keysPressed['s']) {
           this.ship.hyperspace(this.width, this.height);
+          this.soundManager.playHyperspace();
         }
       }
 
@@ -99,16 +112,31 @@ export class Game {
     if (this.bullets.length < 6) {
       const bullet = this.ship.shoot();
       this.bullets.push(bullet);
+      this.soundManager.playFire();
     }
   }
 
   update(deltaTime: number): void {
     this.tickCount++;
 
-    if (this.state !== 'PLAYING') return;
+    if (this.state !== 'PLAYING') {
+      this.soundManager.setThrust(false);
+      this.soundManager.stopHeartbeat();
+      return;
+    }
+
+    if (this.waveTransitionActive) {
+      this.soundManager.stopHeartbeat();
+    } else {
+      this.soundManager.updateHeartbeatAsteroidsCount(this.asteroids.length);
+      this.soundManager.startHeartbeat();
+    }
 
     // Handle ship continuous inputs
     this.ship.thrusting = !!this.keysPressed['w'];
+    const isThrusting = !!this.keysPressed['w'];
+    this.soundManager.setThrust(isThrusting);
+
     if (this.keysPressed['a']) {
       this.ship.rotate('left', deltaTime);
     }
@@ -151,6 +179,15 @@ export class Game {
           // Deactivate bullet
           bullet.active = false;
           
+          // Sound trigger based on asteroid size
+          let size: 'small' | 'medium' | 'large' = 'small';
+          if (asteroid.radius > 30) {
+            size = 'large';
+          } else if (asteroid.radius > 15) {
+            size = 'medium';
+          }
+          this.soundManager.playExplosion(size);
+
           // Split asteroid
           const newAsteroids = asteroid.split();
           this.asteroids.splice(a, 1); // Remove old asteroid
@@ -171,6 +208,9 @@ export class Game {
       for (let a = 0; a < this.asteroids.length; a++) {
         const asteroid = this.asteroids[a];
         if (checkCircleCollision(this.ship.position, this.ship.radius, asteroid.position, asteroid.radius)) {
+          // Play ship death sound
+          this.soundManager.playShipDeath();
+
           // Reset ship to center, reset velocity
           this.ship.position = { x: this.width / 2, y: this.height / 2 };
           this.ship.velocity = { x: 0, y: 0 };
@@ -221,6 +261,7 @@ export class Game {
     ctx.fillText('CONTROLS:', this.width / 2, this.height / 2 + 100);
     ctx.fillText('W = ACCELERATE | A/D = ROTATE', this.width / 2, this.height / 2 + 130);
     ctx.fillText('SPACE = SHOOT | S = HYPERSPACE JUMP', this.width / 2, this.height / 2 + 150);
+    ctx.fillText(`M = TOGGLE MUTE [${this.soundManager.isMuted ? 'MUTED' : 'ON'}]`, this.width / 2, this.height / 2 + 175);
 
     // Goal
     ctx.fillText('SHOOT ASTEROIDS & SURVIVE', this.width / 2, this.height / 2 + 200);
@@ -248,6 +289,7 @@ export class Game {
 
     ctx.textAlign = 'right';
     ctx.fillText(`WAVE ${this.wave}`, this.width - 20, 30);
+    ctx.fillText(`SOUND: ${this.soundManager.isMuted ? 'MUTED' : 'ON'}`, this.width - 20, 60);
 
     // If Wave clear transition is running
     if (this.waveTransitionActive) {

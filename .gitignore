@@ -31,3 +31,21 @@ tsconfig.tsbuildinfo
 
 # Coverage reports
 coverage/
+
+# Local environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# IDE and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS-specific files
+Thumbs.db
+ehthumbs.db

@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { Game } from './game';
 import { Asteroid } from './entities/asteroid';
 import { Bullet } from './entities/bullet';
@@ -103,5 +103,121 @@ describe('Game State and Loop Manager', () => {
     expect(game.waveTransitionActive).toBe(false);
     expect(game.wave).toBe(2);
     expect(game.asteroids.length).toBe(5); // 3 + 2 = 5 large asteroids
+  });
+
+  test('should trigger audio sounds on appropriate actions', () => {
+    const game = new Game(800, 600);
+    
+    // Setup spies
+    const playFireSpy = vi.spyOn(game.soundManager, 'playFire');
+    const playExplosionSpy = vi.spyOn(game.soundManager, 'playExplosion');
+    const playShipDeathSpy = vi.spyOn(game.soundManager, 'playShipDeath');
+    const setThrustSpy = vi.spyOn(game.soundManager, 'setThrust');
+    const startHeartbeatSpy = vi.spyOn(game.soundManager, 'startHeartbeat');
+    const stopHeartbeatSpy = vi.spyOn(game.soundManager, 'stopHeartbeat');
+    const updateHeartbeatCountSpy = vi.spyOn(game.soundManager, 'updateHeartbeatAsteroidsCount');
+
+    // 1. startNewGame -> startHeartbeat & updateHeartbeatCount
+    game.startNewGame();
+    expect(startHeartbeatSpy).toHaveBeenCalled();
+    expect(updateHeartbeatCountSpy).toHaveBeenCalledWith(game.asteroids.length);
+
+    // 2. fireBullet -> playFire
+    game.fireBullet();
+    expect(playFireSpy).toHaveBeenCalled();
+
+    // 3. checkCollisions (bullet-asteroid) -> playExplosion
+    const targetAsteroid = new Asteroid({ x: 200, y: 200 }, 'Large');
+    const bullet = new Bullet(200, 200, 0, 0);
+    game.asteroids = [targetAsteroid];
+    game.bullets = [bullet];
+    game.checkCollisions();
+    expect(playExplosionSpy).toHaveBeenCalledWith('large');
+
+    // 4. checkCollisions (ship-asteroid) -> playShipDeath
+    const targetAsteroid2 = new Asteroid({ x: 400, y: 300 }, 'Large');
+    game.asteroids = [targetAsteroid2];
+    game.ship.isInvulnerable = false;
+    game.checkCollisions();
+    expect(playShipDeathSpy).toHaveBeenCalled();
+
+    // 5. update (thrust active) -> setThrust
+    game.state = 'PLAYING';
+    game.keysPressed['w'] = true;
+    game.update(0.1);
+    expect(setThrustSpy).toHaveBeenCalledWith(true);
+
+    // 6. update (thrust inactive) -> setThrust(false)
+    game.keysPressed['w'] = false;
+    game.update(0.1);
+    expect(setThrustSpy).toHaveBeenCalledWith(false);
+
+    // 7. update (transition active) -> stopHeartbeat
+    game.asteroids = [];
+    game.update(0.1); // Registers transition active at end of frame
+    game.update(0.1); // Transition is now active, stops heartbeat
+    expect(stopHeartbeatSpy).toHaveBeenCalled();
+  });
+
+  test('should toggle mute state and write to localStorage when M key is handled', () => {
+    let keydownCallback: ((e: any) => void) | null = null;
+    const originalWindow = (globalThis as any).window;
+    
+    const mockWindow = {
+      addEventListener: vi.fn().mockImplementation((event, callback) => {
+        if (event === 'keydown') {
+          keydownCallback = callback;
+        }
+      })
+    };
+    (globalThis as any).window = mockWindow;
+
+    const store: Record<string, string> = {};
+    const originalLocalStorage = (globalThis as any).localStorage;
+    (globalThis as any).localStorage = {
+      getItem: vi.fn().mockImplementation((key: string) => store[key] || null),
+      setItem: vi.fn().mockImplementation((key: string, value: string) => {
+        store[key] = String(value);
+      }),
+      clear: vi.fn().mockImplementation(() => {
+        for (const key in store) {
+          delete store[key];
+        }
+      })
+    } as any;
+
+    const game = new Game(800, 600);
+    game.setupInput();
+
+    expect(keydownCallback).toBeDefined();
+    expect(game.soundManager.isMuted).toBe(false);
+
+    // Simulate pressing M key
+    if (keydownCallback) {
+      const mockEvent = {
+        key: 'm',
+        preventDefault: vi.fn()
+      };
+      (keydownCallback as any)(mockEvent);
+    }
+
+    expect(game.soundManager.isMuted).toBe(true);
+    expect(globalThis.localStorage.getItem('asteroids_sound_muted')).toBe('true');
+
+    // Toggle again
+    if (keydownCallback) {
+      const mockEvent = {
+        key: 'm',
+        preventDefault: vi.fn()
+      };
+      (keydownCallback as any)(mockEvent);
+    }
+
+    expect(game.soundManager.isMuted).toBe(false);
+    expect(globalThis.localStorage.getItem('asteroids_sound_muted')).toBe('false');
+
+    // Clean up
+    (globalThis as any).window = originalWindow;
+    (globalThis as any).localStorage = originalLocalStorage;
   });
 });

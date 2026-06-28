@@ -21,6 +21,11 @@ canvas.height = CANVAS_HEIGHT;
 // Create the main game manager instance
 const game = new Game(CANVAS_WIDTH, CANVAS_HEIGHT);
 
+// Resume audio context on user click/tap as fallback for autoplay block
+window.addEventListener('click', () => {
+  game.soundManager.init();
+});
+
 let lastTime = performance.now();
 
 function gameLoop(currentTime: number): void {
