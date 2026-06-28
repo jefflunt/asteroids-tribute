@@ -1,6 +1,33 @@
+# General
 .DS_Store
+
+# Multica / Opencode workspace configs
 .agent_context/
 .multica/
 .opencode/
 AGENTS.md
+
+# Dependencies
 node_modules/
+
+# Production/Build outputs (Vite/TypeScript)
+dist/
+dist-ssr/
+*.local
+
+# Logs and diagnostic files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Caches and TS build info
+.eslintcache
+tsconfig.tsbuildinfo
+.vite/
+.vitest-cache/
+
+# Coverage reports
+coverage/

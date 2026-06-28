@@ -208,7 +208,7 @@ export class Game {
 
     // Title
     ctx.font = "bold 64px 'Courier New', Courier, monospace";
-    ctx.fillText('ASTEROIDS', this.width / 2, this.height / 2 - 80);
+    ctx.fillText('asteroids tribute', this.width / 2, this.height / 2 - 80);
 
     // Prompt (Flashes every 500ms)
     if (Math.floor(this.tickCount / 30) % 2 === 0) {
