@@ -22,6 +22,7 @@ export class Game {
   tickCount: number;
   waveTransitionTimer: number;
   waveTransitionActive: boolean;
+  bulletFireCooldown: number;
 
   constructor(width: number, height: number) {
     this.soundManager = new SoundManager();
@@ -36,6 +37,7 @@ export class Game {
     this.tickCount = 0;
     this.waveTransitionTimer = 2.5; // Seconds between waves
     this.waveTransitionActive = false;
+    this.bulletFireCooldown = 0;
     
     this.resetEntities();
     this.setupInput();
@@ -45,6 +47,7 @@ export class Game {
     this.ship = new Ship(this.width / 2, this.height / 2);
     this.bullets = [];
     this.asteroids = [];
+    this.bulletFireCooldown = 0;
   }
 
   startNewGame(): void {
@@ -92,6 +95,7 @@ export class Game {
       if (this.state === 'PLAYING') {
         if (key === ' ' && !this.keysPressed[' ']) {
           this.fireBullet();
+          this.bulletFireCooldown = 0.2;
         }
         
         const isHyperspaceKey = key === 's' || key === 'arrowdown';
@@ -107,6 +111,9 @@ export class Game {
 
     window.addEventListener('keyup', (e) => {
       const key = e.key.toLowerCase();
+      if (key === ' ') {
+        this.bulletFireCooldown = 0;
+      }
       this.keysPressed[key] = false;
     });
   }
@@ -147,6 +154,17 @@ export class Game {
       this.ship.rotate('left', deltaTime);
     } else if (rightInput && !leftInput) {
       this.ship.rotate('right', deltaTime);
+    }
+
+    // Handle continuous automatic firing
+    if (this.bulletFireCooldown > 0) {
+      this.bulletFireCooldown -= deltaTime;
+    }
+    if (this.keysPressed[' '] && this.bulletFireCooldown <= 0) {
+      if (this.bullets.length < 6) {
+        this.fireBullet();
+        this.bulletFireCooldown = 0.2;
+      }
     }
 
     // Update ship

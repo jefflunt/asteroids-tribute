@@ -385,4 +385,161 @@ describe('Game State and Loop Manager', () => {
     // Clean up
     (globalThis as any).window = originalWindow;
   });
+
+  test('should initialize bulletFireCooldown to 0', () => {
+    const game = new Game(800, 600);
+    expect(game.bulletFireCooldown).toBe(0);
+    game.startNewGame();
+    expect(game.bulletFireCooldown).toBe(0);
+  });
+
+  test('should fire first shot instantly and set cooldown on keydown', () => {
+    let keydownCallback: ((e: any) => void) | null = null;
+    const originalWindow = (globalThis as any).window;
+    
+    const mockWindow = {
+      addEventListener: vi.fn().mockImplementation((event, callback) => {
+        if (event === 'keydown') {
+          keydownCallback = callback;
+        }
+      })
+    };
+    (globalThis as any).window = mockWindow;
+
+    const game = new Game(800, 600);
+    game.setupInput();
+    game.startNewGame();
+    
+    expect(game.bullets.length).toBe(0);
+    expect(game.bulletFireCooldown).toBe(0);
+
+    // Press Spacebar
+    keydownCallback!({ key: ' ', preventDefault: vi.fn() });
+    expect(game.bullets.length).toBe(1);
+    expect(game.bulletFireCooldown).toBe(0.2);
+
+    // Simulate held key repeat (another keydown event without keyup)
+    keydownCallback!({ key: ' ', preventDefault: vi.fn() });
+    expect(game.bullets.length).toBe(1); // No additional bullet
+
+    (globalThis as any).window = originalWindow;
+  });
+
+  test('should handle continuous firing cooldown timing and automatic shots', () => {
+    const game = new Game(800, 600);
+    game.startNewGame();
+    
+    // Simulate spacebar key pressed down
+    game.keysPressed[' '] = true;
+    game.bulletFireCooldown = 0.2; // First shot already set it to 0.2
+    
+    // Update by 0.1 seconds
+    game.update(0.1);
+    expect(game.bulletFireCooldown).toBeCloseTo(0.1);
+    expect(game.bullets.length).toBe(0); // Cooldown still active, no bullet fired
+    
+    // Update by another 0.1 seconds (cooldown should reach <= 0 and fire)
+    game.update(0.1);
+    expect(game.bullets.length).toBe(1); // Fired 2nd bullet automatically
+    expect(game.bulletFireCooldown).toBeCloseTo(0.2); // Reset to 0.2
+  });
+
+  test('should instantly reset cooldown to 0 on keyup of Spacebar', () => {
+    let keyupCallback: ((e: any) => void) | null = null;
+    const originalWindow = (globalThis as any).window;
+    
+    const mockWindow = {
+      addEventListener: vi.fn().mockImplementation((event, callback) => {
+        if (event === 'keyup') {
+          keyupCallback = callback;
+        }
+      })
+    };
+    (globalThis as any).window = mockWindow;
+
+    const game = new Game(800, 600);
+    game.setupInput();
+    game.startNewGame();
+    
+    game.bulletFireCooldown = 0.2;
+    
+    // Release Spacebar
+    keyupCallback!({ key: ' ' });
+    expect(game.bulletFireCooldown).toBe(0);
+
+    (globalThis as any).window = originalWindow;
+  });
+
+  test('should support rapid manual tap-firing bypassing the 200ms cooldown', () => {
+    let keydownCallback: ((e: any) => void) | null = null;
+    let keyupCallback: ((e: any) => void) | null = null;
+    const originalWindow = (globalThis as any).window;
+    
+    const mockWindow = {
+      addEventListener: vi.fn().mockImplementation((event, callback) => {
+        if (event === 'keydown') {
+          keydownCallback = callback;
+        } else if (event === 'keyup') {
+          keyupCallback = callback;
+        }
+      })
+    };
+    (globalThis as any).window = mockWindow;
+
+    const game = new Game(800, 600);
+    game.setupInput();
+    game.startNewGame();
+
+    // Tap 1: Press
+    keydownCallback!({ key: ' ', preventDefault: vi.fn() });
+    expect(game.bullets.length).toBe(1);
+    expect(game.bulletFireCooldown).toBe(0.2);
+
+    // Tap 1: Release
+    keyupCallback!({ key: ' ' });
+    expect(game.bulletFireCooldown).toBe(0);
+
+    // Tap 2: Press immediately (no game loop ticks in between)
+    keydownCallback!({ key: ' ', preventDefault: vi.fn() });
+    expect(game.bullets.length).toBe(2);
+    expect(game.bulletFireCooldown).toBe(0.2);
+
+    // Tap 2: Release
+    keyupCallback!({ key: ' ' });
+    expect(game.bulletFireCooldown).toBe(0);
+
+    (globalThis as any).window = originalWindow;
+  });
+
+  test('should continuous-poll and fire immediately once bullet limit permits', () => {
+    const game = new Game(800, 600);
+    game.startNewGame();
+    
+    // Fill the bullets array with 6 active bullets
+    for (let i = 0; i < 6; i++) {
+      game.bullets.push(game.ship.shoot());
+    }
+    expect(game.bullets.length).toBe(6);
+    
+    // Set spacebar held down and set cooldown to 0 (ready to fire but limited)
+    game.keysPressed[' '] = true;
+    game.bulletFireCooldown = 0;
+    
+    // Update the game. It shouldn't fire a 7th bullet, and cooldown should remain <= 0 (continuous polling)
+    game.update(0.1);
+    expect(game.bullets.length).toBe(6);
+    expect(game.bulletFireCooldown).toBeLessThanOrEqual(0);
+    
+    // Deactivate one bullet and manually filter it from game bullets
+    game.bullets[0].active = false;
+    game.bullets = game.bullets.filter(b => b.active);
+    
+    // Trigger the update frame (which updates/filters bullets, then checks continuous firing)
+    game.update(0.016);
+    
+    // Bullet count should still be 6 because the inactive one was filtered and a new one was fired
+    expect(game.bullets.length).toBe(6);
+    expect(game.bullets.filter(b => b.active).length).toBe(6);
+    expect(game.bulletFireCooldown).toBe(0.2);
+  });
 });
